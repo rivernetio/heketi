@@ -52,6 +52,8 @@ type PlacementOpts interface {
 	SetCount() int
 	// AverageFileSize returns the average file size for the volume
 	AverageFileSize() uint64
+	// Fast mode
+	FastMode() bool
 }
 
 // DeviceFilter functions can be defined by the caller of a
@@ -76,11 +78,3 @@ type BrickPlacer interface {
 	Replace(DeviceSource, PlacementOpts, DeviceFilter, *BrickSet, int) (
 		*BrickAllocation, error)
 }
-
-type BrickSubType int
-
-const (
-	UnknownSubType BrickSubType = iota
-	NormalSubType
-	ArbiterSubType
-)

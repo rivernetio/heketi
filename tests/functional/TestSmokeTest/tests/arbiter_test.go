@@ -14,15 +14,13 @@ package functional
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/heketi/heketi/pkg/glusterfs/api"
-	"github.com/heketi/heketi/pkg/testutils"
+	"github.com/heketi/heketi/pkg/utils/ssh"
 	"github.com/heketi/tests"
 )
 
@@ -262,7 +260,6 @@ func testArbiterCreateSimple(t *testing.T) {
 }
 
 func testArbiterCreateAndVerify(t *testing.T) {
-	na := testutils.RequireNodeAccess(t)
 	volReq := &api.VolumeCreateRequest{}
 	volReq.Size = 10
 	volReq.Durability.Type = api.DurabilityReplicate
@@ -273,23 +270,18 @@ func testArbiterCreateAndVerify(t *testing.T) {
 	tests.Assert(t, err == nil, "expected err == nil, got:", err)
 
 	// SSH into system and check that arbiter is really in use
-	s := na.Use(logger)
-
+	s := ssh.NewSshExecWithKeyFile(
+		logger, "vagrant", "../config/insecure_private_key")
 	cmd := []string{
 		fmt.Sprintf("gluster volume info %v | grep -q \"^Brick.* .arbiter.\"", vcr.Name),
 	}
-	_, err = s.ConnectAndExec(cenv.SshHost(0), cmd, 10, true)
+	_, err = s.ConnectAndExec(storage0ssh, cmd, 10, true)
 	tests.Assert(t, err == nil, "No bricks marked as arbiter")
-
-	vi, err := heketi.VolumeInfo(vcr.Id)
-	tests.Assert(t, err == nil, "expected err == nil, got:", err)
-	checkArbiterFormatting(t, vi)
 }
 
 // Test that a volume not flagged for arbiter support does
 // not have arbiter tagging on gluster side.
 func testNonArbiterIsNotArbiter(t *testing.T) {
-	na := testutils.RequireNodeAccess(t)
 	volReq := &api.VolumeCreateRequest{}
 	volReq.Size = 10
 	volReq.Durability.Type = api.DurabilityReplicate
@@ -299,12 +291,12 @@ func testNonArbiterIsNotArbiter(t *testing.T) {
 	tests.Assert(t, err == nil, "expected err == nil, got:", err)
 
 	// SSH into system and check that arbiter is really in use
-	s := na.Use(logger)
-
+	s := ssh.NewSshExecWithKeyFile(
+		logger, "vagrant", "../config/insecure_private_key")
 	cmd := []string{
 		fmt.Sprintf("gluster volume info %v | grep -q \"^Brick.* .arbiter.\"", vcr.Name),
 	}
-	_, err = s.ConnectAndExec(cenv.SshHost(0), cmd, 10, true)
+	_, err = s.ConnectAndExec(storage0ssh, cmd, 10, true)
 	tests.Assert(t, err != nil, "Bricks marked as arbiter")
 }
 
@@ -361,7 +353,6 @@ func testArbiterReplaceDataBrick(t *testing.T) {
 }
 
 func testArbiterReplaceArbiterBrick(t *testing.T) {
-	na := testutils.RequireNodeAccess(t)
 	volReq := &api.VolumeCreateRequest{}
 	volReq.Size = 10
 	volReq.Durability.Type = api.DurabilityReplicate
@@ -383,12 +374,12 @@ func testArbiterReplaceArbiterBrick(t *testing.T) {
 	}
 
 	// extra confirmation this is the arbiter brick
-	s := na.Use(logger)
-
+	s := ssh.NewSshExecWithKeyFile(
+		logger, "vagrant", "../config/insecure_private_key")
 	cmd := []string{
 		fmt.Sprintf("gluster volume info %v | grep \"^Brick.* .arbiter.\"", vcr.Name),
 	}
-	o, err := s.ConnectAndExec(cenv.SshHost(0), cmd, 10, true)
+	o, err := s.ConnectAndExec(storage0ssh, cmd, 10, true)
 	tests.Assert(t, err == nil, "expected err == nil, got:", err)
 	tests.Assert(t, strings.Contains(o[0], path),
 		"expected output to contain brick path",
@@ -425,40 +416,13 @@ func testArbiterReplaceArbiterBrick(t *testing.T) {
 			"device still in use by volume", deviceId)
 	}
 
-	s = na.Use(logger)
-
+	s = ssh.NewSshExecWithKeyFile(
+		logger, "vagrant", "../config/insecure_private_key")
 	cmd = []string{
 		fmt.Sprintf("gluster volume info %v | grep \"^Brick.* .arbiter.\"", vcr.Name),
 	}
-	o, err = s.ConnectAndExec(cenv.SshHost(0), cmd, 10, true)
+	o, err = s.ConnectAndExec(storage0ssh, cmd, 10, true)
 	tests.Assert(t, !strings.Contains(o[0], path),
 		"expected output not to contain old brick path",
 		"output:", o, "path:", path)
-
-	checkArbiterFormatting(t, vi)
-}
-
-func checkArbiterFormatting(t *testing.T, vol *api.VolumeInfoResponse) {
-	na := testutils.RequireNodeAccess(t)
-	s := na.Use(logger)
-
-	re := regexp.MustCompile("(imaxpct=[0-9]+)")
-
-	r := sort.StringSlice{}
-	for _, b := range vol.Bricks {
-		ni, err := heketi.NodeInfo(b.NodeId)
-		tests.Assert(t, err == nil, "expected err == nil, got:", err)
-		host := ni.Hostnames.Manage[0] + ":" + cenv.SSHPort
-		cmd := fmt.Sprintf("xfs_info %v", b.Path)
-		o, err := s.ConnectAndExec(host, []string{cmd}, 10, true)
-		tests.Assert(t, err == nil, "expected err == nil, got:", err)
-		match := re.FindString(o[0])
-		tests.Assert(t, match != "", "expected match got empty string")
-		r = append(r, match)
-	}
-	r.Sort()
-	tests.Assert(t, len(r) == 3)
-	tests.Assert(t, r[0] == "imaxpct=100")
-	tests.Assert(t, r[1] == "imaxpct=25")
-	tests.Assert(t, r[2] == "imaxpct=25")
 }

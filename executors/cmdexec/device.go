@@ -16,9 +16,7 @@ import (
 	"strings"
 
 	"github.com/heketi/heketi/executors"
-	conv "github.com/heketi/heketi/pkg/conversions"
-	"github.com/heketi/heketi/pkg/paths"
-	rex "github.com/heketi/heketi/pkg/remoteexec"
+	"github.com/heketi/heketi/pkg/utils"
 )
 
 const (
@@ -42,11 +40,11 @@ func (s *CmdExecutor) DeviceSetup(host, device, vgid string, destroy bool) (d *e
 		logger.Info("Data on device %v (host %v) will be destroyed", device, host)
 		commands = append(commands, fmt.Sprintf("wipefs --all %v", device))
 	}
-	commands = append(commands, fmt.Sprintf("pvcreate -qq --metadatasize=128M --dataalignment=256K '%v'", device))
-	commands = append(commands, fmt.Sprintf("vgcreate -qq --autobackup=%v %v %v", conv.BoolToYN(s.BackupLVM), paths.VgIdToName(vgid), device))
+	commands = append(commands, fmt.Sprintf("pvcreate --metadatasize=128M --dataalignment=256K '%v'", device))
+	commands = append(commands, fmt.Sprintf("vgcreate --autobackup=%v %v %v", utils.BoolToYN(s.BackupLVM), utils.VgIdToName(vgid), device))
 
 	// Execute command
-	err := rex.AnyError(s.RemoteExecutor.ExecCommands(host, commands, 5))
+	_, err := s.RemoteExecutor.RemoteCommandExecute(host, commands, 5)
 	if err != nil {
 		return nil, err
 	}
@@ -72,44 +70,25 @@ func (s *CmdExecutor) GetDeviceInfo(host, device, vgid string) (d *executors.Dev
 }
 
 func (s *CmdExecutor) DeviceTeardown(host, device, vgid string) error {
-	if err := s.removeDevice(host, device, vgid); err != nil {
-		return err
-	}
-	return s.removeDeviceMountPoint(host, vgid)
-}
 
-// DeviceForget attempts a best effort remove of the device's vg and
-// pv and always returns a nil error.
-func (s *CmdExecutor) DeviceForget(host, device, vgid string) error {
-	s.removeDeviceMountPoint(host, vgid)
-	s.removeDevice(host, device, vgid)
-	return nil
-}
-
-func (s *CmdExecutor) removeDevice(host, device, vgid string) error {
+	// Setup commands
 	commands := []string{
-		fmt.Sprintf("vgremove -qq %v", paths.VgIdToName(vgid)),
+		fmt.Sprintf("vgremove -qq %v", utils.VgIdToName(vgid)),
 		fmt.Sprintf("pvremove -qq '%v'", device),
 	}
 
 	// Execute command
-	err := rex.AnyError(s.RemoteExecutor.ExecCommands(host, commands, 5))
+	_, err := s.RemoteExecutor.RemoteCommandExecute(host, commands, 5)
 	if err != nil {
-		return logger.LogError(
-			"Failed to delete device %v with id %v on host %v: %v",
+		logger.LogError("Error while deleting device %v with id %v on host %v: %v",
 			device, vgid, host, err)
 	}
-	return nil
-}
 
-func (s *CmdExecutor) removeDeviceMountPoint(host, vgid string) error {
-	// TODO: remove this LBYL check and replace it with the rmdir
-	// followed by error condition check that handles ENOENT
-	pdir := paths.BrickMountPointParent(vgid)
-	commands := []string{
+	pdir := utils.BrickMountPointParent(vgid)
+	commands = []string{
 		fmt.Sprintf("ls %v", pdir),
 	}
-	err := rex.AnyError(s.RemoteExecutor.ExecCommands(host, commands, 5))
+	_, err = s.RemoteExecutor.RemoteCommandExecute(host, commands, 5)
 	if err != nil {
 		return nil
 	}
@@ -118,10 +97,12 @@ func (s *CmdExecutor) removeDeviceMountPoint(host, vgid string) error {
 		fmt.Sprintf("rmdir %v", pdir),
 	}
 
-	err = rex.AnyError(s.RemoteExecutor.ExecCommands(host, commands, 5))
+	_, err = s.RemoteExecutor.RemoteCommandExecute(host, commands, 5)
 	if err != nil {
 		logger.LogError("Error while removing the VG directory")
+		return nil
 	}
+
 	return nil
 }
 
@@ -131,18 +112,18 @@ func (s *CmdExecutor) getVgSizeFromNode(
 
 	// Setup command
 	commands := []string{
-		fmt.Sprintf("vgdisplay -c %v", paths.VgIdToName(vgid)),
+		fmt.Sprintf("vgdisplay -c %v", utils.VgIdToName(vgid)),
 	}
 
 	// Execute command
-	results, err := s.RemoteExecutor.ExecCommands(host, commands, 5)
-	if err := rex.AnyError(results, err); err != nil {
+	b, err := s.RemoteExecutor.RemoteCommandExecute(host, commands, 5)
+	if err != nil {
 		return err
 	}
 
 	// Example:
 	// sampleVg:r/w:772:-1:0:0:0:-1:0:4:4:2097135616:4096:511996:0:511996:rJ0bIG-3XNc-NoS0-fkKm-batK-dFyX-xbxHym
-	vginfo := strings.Split(results[0].Output, ":")
+	vginfo := strings.Split(b[0], ":")
 
 	// See vgdisplay manpage
 	if len(vginfo) < 17 {

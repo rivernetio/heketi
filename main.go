@@ -10,15 +10,11 @@
 package main
 
 import (
-	crand "crypto/rand"
 	"fmt"
-	"math/big"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/spf13/cobra"
@@ -28,9 +24,7 @@ import (
 	"github.com/heketi/heketi/apps/glusterfs"
 	"github.com/heketi/heketi/middleware"
 	"github.com/heketi/heketi/pkg/metrics"
-	"github.com/heketi/heketi/server/admin"
 	"github.com/heketi/heketi/server/config"
-	"github.com/heketi/heketi/server/profiling"
 )
 
 var (
@@ -266,21 +260,13 @@ func setWithEnvVariables(options *config.Config) {
 	if "" != env {
 		options.BackupDbToKubeSecret = true
 	}
-
-	env = os.Getenv("HEKETI_PROFILING")
-	if "" != env {
-		options.Profiling = true
-	}
 }
 
 func setupApp(config *config.Config) (a *glusterfs.App) {
 	defer func() {
 		err := recover()
-		if a == nil {
+		if a == nil || err != nil {
 			fmt.Fprintln(os.Stderr, "ERROR: Unable to start application")
-			os.Exit(1)
-		} else if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: Unable to start application: %s\n", err)
 			os.Exit(1)
 		}
 	}()
@@ -292,26 +278,7 @@ func setupApp(config *config.Config) (a *glusterfs.App) {
 		glusterfs.MonitorGlusterNodes = true
 	}
 
-	a = glusterfs.NewApp(config.GlusterFS)
-	if a != nil {
-		if err := a.ServerReset(); err != nil {
-			fmt.Fprintln(os.Stderr, "ERROR: Failed to reset server application")
-			os.Exit(1)
-		}
-	}
-	return a
-}
-
-func randSeed() {
-	// from rand.Seed docs: "Seed values that have the same remainder when
-	// divided by 2^31-1 generate the same pseudo-random sequence."
-	max := big.NewInt(1<<31 - 1)
-	n, err := crand.Int(crand.Reader, max)
-	if err != nil {
-		rand.Seed(time.Now().UnixNano())
-	} else {
-		rand.Seed(n.Int64())
-	}
+	return glusterfs.NewApp(config.GlusterFS)
 }
 
 func main() {
@@ -324,9 +291,6 @@ func main() {
 	if configfile == "" {
 		return
 	}
-
-	// Seed PRNG
-	randSeed()
 
 	// Read configuration
 	options, err := config.ReadConfig(configfile)
@@ -356,11 +320,6 @@ func main() {
 
 	router.Methods("GET").Path("/metrics").Name("Metrics").HandlerFunc(metrics.NewMetricsHandler(app))
 
-	// Enable profiling on "/debug/pprof"
-	if options.Profiling {
-		profiling.EnableProfiling(router)
-	}
-
 	// Create a router and do not allow any routes
 	// unless defined.
 	heketiRouter := mux.NewRouter().StrictSlash(true)
@@ -387,10 +346,6 @@ func main() {
 		fmt.Println("Authorization loaded")
 	}
 
-	adminss := admin.New()
-	n.Use(adminss)
-	adminss.SetRoutes(heketiRouter)
-
 	if options.BackupDbToKubeSecret {
 		// Check if running in a Kubernetes environment
 		_, err = restclient.InClusterConfig()
@@ -405,9 +360,6 @@ func main() {
 
 	// Setup complete routing
 	router.NewRoute().Handler(n)
-
-	// Reset admin mode on SIGUSR2
-	admin.ResetStateOnSignal(adminss, syscall.SIGUSR2)
 
 	// Shutdown on CTRL-C signal
 	// For a better cleanup, we should shutdown the server and

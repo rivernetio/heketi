@@ -17,9 +17,8 @@ import (
 
 	client "github.com/heketi/heketi/client/api/go-client"
 	"github.com/heketi/heketi/pkg/glusterfs/api"
-	"github.com/heketi/heketi/pkg/logging"
-	"github.com/heketi/heketi/pkg/testutils"
 	"github.com/heketi/heketi/pkg/utils"
+	"github.com/heketi/heketi/pkg/utils/ssh"
 	"github.com/heketi/tests"
 )
 
@@ -39,7 +38,7 @@ const (
 var (
 	// Heketi client
 	heketi = client.NewClient(heketiUrl, "admin", "adminkey")
-	logger = logging.NewLogger("[test]", logging.LEVEL_DEBUG)
+	logger = utils.NewLogger("[test]", utils.LEVEL_DEBUG)
 )
 
 func getdisks() []string {
@@ -240,7 +239,6 @@ func TestConnection(t *testing.T) {
 }
 
 func TestVolumeNotDeletedWhenNodeIsDown(t *testing.T) {
-	na := testutils.RequireNodeAccess(t)
 
 	// Setup the VM storage topology
 	teardownCluster(t)
@@ -256,7 +254,7 @@ func TestVolumeNotDeletedWhenNodeIsDown(t *testing.T) {
 	tests.Assert(t, err == nil, "expected err == nil, got:", err)
 
 	// SSH into one system and power it off
-	exec := na.Use(logger)
+	exec := ssh.NewSshExecWithKeyFile(logger, "vagrant", "../config/insecure_private_key")
 
 	// Turn off glusterd
 	cmd := []string{"service glusterd stop"}

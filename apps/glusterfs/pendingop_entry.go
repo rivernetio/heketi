@@ -16,22 +16,14 @@ import (
 
 	"github.com/boltdb/bolt"
 	wdb "github.com/heketi/heketi/pkg/db"
-	"github.com/heketi/heketi/pkg/idgen"
+	"github.com/heketi/heketi/pkg/utils"
 	"github.com/lpabon/godbc"
 )
-
-type OperationStatus string
 
 const (
 	NEW_ID                    = ""
 	BOLTDB_BUCKET_PENDING_OPS = "PENDING_OPERATIONS"
 	DB_HAS_PENDING_OPS_BUCKET = "DB_HAS_PENDING_OPS_BUCKET"
-)
-
-// define constants for OperationStatus
-const (
-	NewOperation   OperationStatus = ""
-	StaleOperation OperationStatus = "stale"
 )
 
 var (
@@ -42,9 +34,6 @@ var (
 // PendingOperationEntry tracks pending operations within the Heketi db.
 type PendingOperationEntry struct {
 	PendingOperation
-
-	// tracking the status of operations
-	Status OperationStatus
 }
 
 // PendingOperationList returns the IDs of all pending operation entries
@@ -85,15 +74,13 @@ func (p *PendingOperationEntry) BucketName() string {
 // for the new object.
 func NewPendingOperationEntry(id string) *PendingOperationEntry {
 	if id == NEW_ID {
-		id = idgen.GenUUID()
+		id = utils.GenUUID()
 	}
-	entry := &PendingOperationEntry{
-		PendingOperation: PendingOperation{
-			PendingItem: PendingItem{id},
-			Timestamp:   operationTimestamp(),
-			Actions:     []PendingOperationAction{},
-		},
-	}
+	entry := &PendingOperationEntry{PendingOperation{
+		PendingItem: PendingItem{id},
+		Timestamp:   operationTimestamp(),
+		Actions:     []PendingOperationAction{},
+	}}
 	return entry
 }
 
@@ -306,43 +293,4 @@ func PendingOperationUpgrade(tx *bolt.Tx) error {
 	// there are no data changes related to enabling Pending Ops in the db
 	// so simply save the entry to record that this db now has them
 	return entry.Save(tx)
-}
-
-// MarkPendingOperationsStale iterates through all the pending operations
-// in the DB and ensures they are marked as stale operations.
-func MarkPendingOperationsStale(tx *bolt.Tx) error {
-	pops, err := PendingOperationList(tx)
-	if err != nil {
-		return err
-	}
-	for _, id := range pops {
-		pop, err := NewPendingOperationEntryFromId(tx, id)
-		if err != nil {
-			return err
-		}
-		// don't bother updating ops that are already stale
-		if pop.Status != StaleOperation {
-			pop.Status = StaleOperation
-			pop.Save(tx)
-		}
-	}
-	return nil
-}
-
-// PendingOperationStateCount returns a mapping of pending operation
-// statuses to the count of the operations of that status in the db.
-func PendingOperationStateCount(tx *bolt.Tx) (map[OperationStatus]int, error) {
-	pops, err := PendingOperationList(tx)
-	if err != nil {
-		return nil, err
-	}
-	count := map[OperationStatus]int{}
-	for _, id := range pops {
-		pop, err := NewPendingOperationEntryFromId(tx, id)
-		if err != nil {
-			return nil, err
-		}
-		count[pop.Status] += 1
-	}
-	return count, nil
 }

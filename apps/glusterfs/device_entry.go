@@ -19,8 +19,7 @@ import (
 	"github.com/heketi/heketi/executors"
 	wdb "github.com/heketi/heketi/pkg/db"
 	"github.com/heketi/heketi/pkg/glusterfs/api"
-	"github.com/heketi/heketi/pkg/idgen"
-	"github.com/heketi/heketi/pkg/sortedstrings"
+	"github.com/heketi/heketi/pkg/utils"
 	"github.com/lpabon/godbc"
 )
 
@@ -61,7 +60,7 @@ func NewDeviceEntryFromRequest(req *api.DeviceAddRequest) *DeviceEntry {
 	godbc.Require(req != nil)
 
 	device := NewDeviceEntry()
-	device.Info.Id = idgen.GenUUID()
+	device.Info.Id = utils.GenUUID()
 	device.Info.Name = req.Name
 	device.NodeId = req.NodeId
 	device.Info.Tags = copyTags(req.Tags)
@@ -320,14 +319,14 @@ func (d *DeviceEntry) Unmarshal(buffer []byte) error {
 }
 
 func (d *DeviceEntry) BrickAdd(id string) {
-	godbc.Require(!sortedstrings.Has(d.Bricks, id))
+	godbc.Require(!utils.SortedStringHas(d.Bricks, id))
 
 	d.Bricks = append(d.Bricks, id)
 	d.Bricks.Sort()
 }
 
 func (d *DeviceEntry) BrickDelete(id string) {
-	d.Bricks = sortedstrings.Delete(d.Bricks, id)
+	d.Bricks = utils.SortedStringsDelete(d.Bricks, id)
 }
 
 func (d *DeviceEntry) StorageSet(total uint64, free uint64, used uint64) {
@@ -360,11 +359,17 @@ func (d *DeviceEntry) SetExtentSize(amount uint64) {
 // the storage amount required from the device's used storage, but it will not add
 // the brick id to the brick list.  The caller is responsible for adding the brick
 // id to the list.
-func (d *DeviceEntry) NewBrickEntry(amount uint64, snapFactor float64, gid int64, volumeid string) *BrickEntry {
+func (d *DeviceEntry) NewBrickEntry(amount uint64, snapFactor float64, gid int64, volumeid string, fastMode bool) *BrickEntry {
 
 	// :TODO: This needs unit test
 
-	sn := d.SpaceNeeded(amount, snapFactor)
+	var sn SpaceNeeded
+
+	if fastMode {
+		sn = SpaceNeeded{0, 0, 0}
+	} else {
+		sn = d.SpaceNeeded(amount, snapFactor)
+	}
 
 	logger.Debug("device %v[%v] > required size [%v] ?",
 		d.Id(),
@@ -377,7 +382,7 @@ func (d *DeviceEntry) NewBrickEntry(amount uint64, snapFactor float64, gid int64
 	d.StorageAllocate(sn.Total)
 
 	// Create brick
-	return NewBrickEntry(amount, sn.TpSize, sn.PoolMetadataSize, d.Info.Id, d.NodeId, gid, volumeid)
+	return NewBrickEntry(amount, sn.TpSize, sn.PoolMetadataSize, d.Info.Id, d.NodeId, gid, volumeid, fastMode)
 }
 
 type SpaceNeeded struct {
@@ -582,7 +587,7 @@ func (d *DeviceEntry) DeleteBricksWithEmptyPath(tx *bolt.Tx) error {
 		brick, err := NewBrickEntryFromId(tx, id)
 		if err == ErrNotFound {
 			logger.Warning("Ignoring nonexistent brick [%v] on "+
-				"disk [%v].", id, d.Info.Id)
+				"disk [%d].", id, d.Info.Id)
 			continue
 		}
 		if err != nil {

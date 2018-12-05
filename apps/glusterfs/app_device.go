@@ -194,15 +194,6 @@ func (a *App) DeviceDelete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	var opts api.DeviceDeleteOptions
-	if r.ContentLength > 0 {
-		err := utils.GetJsonFromRequest(r, &opts)
-		if err != nil {
-			http.Error(w, "request unable to be parsed", 422)
-			return
-		}
-	}
-
 	// Check request
 	var (
 		device *DeviceEntry
@@ -245,15 +236,8 @@ func (a *App) DeviceDelete(w http.ResponseWriter, r *http.Request) {
 	a.asyncManager.AsyncHttpRedirectFunc(w, r, func() (string, error) {
 
 		// Teardown device
-		var err error
-		if opts.ForceForget {
-			logger.Info("Delete request set force-forget option")
-			err = a.executor.DeviceForget(node.ManageHostName(),
-				device.Info.Name, device.Info.Id)
-		} else {
-			err = a.executor.DeviceTeardown(node.ManageHostName(),
-				device.Info.Name, device.Info.Id)
-		}
+		err := a.executor.DeviceTeardown(node.ManageHostName(),
+			device.Info.Name, device.Info.Id)
 		if err != nil {
 			return "", err
 		}

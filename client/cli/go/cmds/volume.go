@@ -38,6 +38,7 @@ var (
 	kubePv               bool
 	glusterVolumeOptions string
 	block                bool
+	fastmode             bool
 )
 
 func init() {
@@ -47,9 +48,6 @@ func init() {
 	volumeCommand.AddCommand(volumeExpandCommand)
 	volumeCommand.AddCommand(volumeInfoCommand)
 	volumeCommand.AddCommand(volumeListCommand)
-	volumeCommand.AddCommand(volumeBlockHostingRestrictionCommand)
-	volumeBlockHostingRestrictionCommand.AddCommand(volumeBlockHostingRestrictionUnlockCommand)
-	volumeBlockHostingRestrictionCommand.AddCommand(volumeBlockHostingRestrictionLockCommand)
 
 	volumeCreateCommand.Flags().IntVar(&size, "size", 0,
 		"\n\tSize of volume in GiB")
@@ -97,12 +95,13 @@ func init() {
 	volumeCreateCommand.Flags().BoolVar(&block, "block", false,
 		"\n\tOptional: Create a block-hosting volume. Intended to host"+
 			"\n\tloopback files to be exported as block devices.")
+	volumeCreateCommand.Flags().BoolVar(&fastmode, "fastmode", false,
+		"\n\tOptional: Create a volume use local file system.")
 	volumeCreateCommand.SilenceUsage = true
 	volumeDeleteCommand.SilenceUsage = true
 	volumeExpandCommand.SilenceUsage = true
 	volumeInfoCommand.SilenceUsage = true
 	volumeListCommand.SilenceUsage = true
-	volumeBlockHostingRestrictionCommand.SilenceUsage = true
 
 	volumeCommand.AddCommand(volumeCloneCommand)
 	volumeCloneCommand.Flags().StringVar(&volname, "name", "",
@@ -163,6 +162,7 @@ var volumeCreateCommand = &cobra.Command{
 		req.Durability.Disperse.Data = disperseData
 		req.Durability.Disperse.Redundancy = redundancy
 		req.Block = block
+		req.FastMode = fastmode
 
 		// Check clusters
 		if clusters != "" {
@@ -302,106 +302,6 @@ var volumeExpandCommand = &cobra.Command{
 
 		// Expand volume
 		volume, err := heketi.VolumeExpand(id, req)
-		if err != nil {
-			return err
-		}
-
-		if options.Json {
-			data, err := json.Marshal(volume)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(stdout, string(data))
-		} else {
-			fmt.Fprintf(stdout, "%v", volume)
-		}
-		return nil
-	},
-}
-
-var volumeBlockHostingRestrictionCommand = &cobra.Command{
-	Use:   "set-block-hosting-restriction",
-	Short: "set volume's block hosting restriction",
-	Long:  "set volume's block hosting restriction",
-}
-
-var volumeBlockHostingRestrictionLockCommand = &cobra.Command{
-	Use:   "locked",
-	Short: "restrict creation of block volumes on block hosting volume",
-	Long:  "restrict creation of block volumes on block hosting volume",
-	Example: ` * Restrict creation of block volumes on the volume
-    $ heketi-cli volume set-block-hosting-restriction locked 60d46d518074b13a04ce1022c8c7193c
-`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		s := cmd.Flags().Args()
-
-		//ensure proper number of args
-		if len(s) < 1 {
-			return errors.New("Volume id missing")
-		}
-
-		//set volumeId
-		volumeID := cmd.Flags().Arg(0)
-
-		// Create request
-		req := &api.VolumeBlockRestrictionRequest{}
-		req.Restriction = api.Locked
-
-		// Create client
-		heketi, err := newHeketiClient()
-		if err != nil {
-			return err
-		}
-
-		// Set the flag
-		volume, err := heketi.VolumeSetBlockRestriction(volumeID, req)
-		if err != nil {
-			return err
-		}
-
-		if options.Json {
-			data, err := json.Marshal(volume)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(stdout, string(data))
-		} else {
-			fmt.Fprintf(stdout, "%v", volume)
-		}
-		return nil
-	},
-}
-
-var volumeBlockHostingRestrictionUnlockCommand = &cobra.Command{
-	Use:   "unlocked",
-	Short: "allow creation of block volumes on block hosting volume",
-	Long:  "allow creation of block volumes on block hosting volume",
-	Example: ` * Allow creation of block volumes on the volume
-    $ heketi-cli volume set-block-hosting-restriction unlocked 60d46d518074b13a04ce1022c8c7193c
-`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		s := cmd.Flags().Args()
-
-		//ensure proper number of args
-		if len(s) < 1 {
-			return errors.New("Volume id missing")
-		}
-
-		//set volumeId
-		volumeID := cmd.Flags().Arg(0)
-
-		// Create request
-		req := &api.VolumeBlockRestrictionRequest{}
-		req.Restriction = api.Unrestricted
-
-		// Create client
-		heketi, err := newHeketiClient()
-		if err != nil {
-			return err
-		}
-
-		// Set the flag
-		volume, err := heketi.VolumeSetBlockRestriction(volumeID, req)
 		if err != nil {
 			return err
 		}

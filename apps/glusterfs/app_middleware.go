@@ -17,7 +17,6 @@ import (
 	"github.com/gorilla/context"
 	"github.com/urfave/negroni"
 
-	"github.com/heketi/heketi/middleware"
 	"github.com/heketi/heketi/pkg/kubernetes"
 )
 
@@ -33,10 +32,10 @@ func (a *App) Auth(w http.ResponseWriter, r *http.Request, next http.HandlerFunc
 
 	// Need to change from interface{} to the jwt.Token type
 	token := data.(*jwt.Token)
-	claims := token.Claims.(*middleware.HeketiJwtClaims)
+	claims := token.Claims.(jwt.MapClaims)
 
 	// Check access
-	if "user" == claims.Issuer && r.URL.Path != "/volumes" {
+	if "user" == claims["iss"] && r.URL.Path != "/volumes" {
 		http.Error(w, "Administrator access required", http.StatusUnauthorized)
 		return
 	}

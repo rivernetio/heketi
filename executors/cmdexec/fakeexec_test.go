@@ -9,23 +9,19 @@
 
 package cmdexec
 
-import (
-	rex "github.com/heketi/heketi/pkg/remoteexec"
-)
-
 type CommandFaker struct {
 	FakeConnectAndExec func(host string,
 		commands []string,
 		timeoutMinutes int,
-		useSudo bool) (rex.Results, error)
+		useSudo bool) ([]string, error)
 }
 
 func NewCommandFaker() *CommandFaker {
 	f := &CommandFaker{}
 	f.FakeConnectAndExec = func(
 		host string, commands []string,
-		timeoutMinutes int, useSudo bool) (rex.Results, error) {
-		return rex.Results{}, nil
+		timeoutMinutes int, useSudo bool) ([]string, error) {
+		return []string{}, nil
 	}
 	return f
 }
@@ -42,9 +38,7 @@ type FakeExecutor struct {
 func NewFakeExecutor(f *CommandFaker) (*FakeExecutor, error) {
 	t := &FakeExecutor{}
 	t.RemoteExecutor = t
-	config := &CmdConfig{}
-	config.GlusterCliTimeout = 42
-	t.CmdExecutor.Init(config)
+	t.Throttlemap = make(map[string]chan bool)
 	t.fake = f
 	t.Fstab = "/my/fstab"
 	t.portStr = "22"
@@ -54,21 +48,6 @@ func NewFakeExecutor(f *CommandFaker) (*FakeExecutor, error) {
 func (s *FakeExecutor) RemoteCommandExecute(host string,
 	commands []string,
 	timeoutMinutes int) ([]string, error) {
-
-	s.AccessConnection(host)
-	defer s.FreeConnection(host)
-
-	r, err := s.fake.FakeConnectAndExec(
-		host+":"+s.portStr, commands, timeoutMinutes, s.useSudo)
-	if err != nil {
-		return nil, err
-	}
-	return r.SquashErrors()
-}
-
-func (s *FakeExecutor) ExecCommands(host string,
-	commands []string,
-	timeoutMinutes int) (rex.Results, error) {
 
 	s.AccessConnection(host)
 	defer s.FreeConnection(host)

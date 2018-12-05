@@ -39,12 +39,9 @@ fi
 
 TOXENVS="py27"
 if command -v python3.5 &>/dev/null; then
+	TOXENVS="${TOXENVS},py35"
 	if command -v pyenv &>/dev/null; then
-		if pyenv global system 3.5; then
-			TOXENVS="${TOXENVS},py35"
-		fi
-	else
-		TOXENVS="${TOXENVS},py35"
+		pyenv global system 3.5
 	fi
 fi
 if command -v python3.6 &>/dev/null; then

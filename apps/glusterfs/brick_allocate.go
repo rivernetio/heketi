@@ -16,7 +16,7 @@ import (
 	"github.com/lpabon/godbc"
 
 	wdb "github.com/heketi/heketi/pkg/db"
-	"github.com/heketi/heketi/pkg/idgen"
+	"github.com/heketi/heketi/pkg/utils"
 )
 
 type BrickSet struct {
@@ -199,13 +199,11 @@ func tryAllocateBrickOnDevice(
 	// Try to allocate a brick on this device
 	brickSize, snapFactor := opts.BrickSizes()
 	brick := device.NewBrickEntry(brickSize, snapFactor,
-		opts.BrickGid(), opts.BrickOwner())
+		opts.BrickGid(), opts.BrickOwner(), opts.FastMode())
 	if brick == nil {
 		logger.Debug(
 			"Unable to place a brick of size %v & factor %v on device %v",
 			brickSize, snapFactor, device.Info.Id)
-	} else {
-		brick.SubType = NormalSubType
 	}
 	return brick
 }
@@ -428,6 +426,10 @@ func (vp *VolumePlacementOpts) AverageFileSize() uint64 {
 	return vp.v.GetAverageFileSize()
 }
 
+func (vp *VolumePlacementOpts) FastMode()  bool {
+	return vp.v.Info.FastMode
+}
+
 type StandardBrickPlacer struct{}
 
 func NewStandardBrickPlacer() *StandardBrickPlacer {
@@ -451,7 +453,7 @@ func (bp *StandardBrickPlacer) PlaceAll(
 
 		// Generate an id for the brick, this is used as a
 		// random index into the ring(s)
-		brickId := idgen.GenUUID()
+		brickId := utils.GenUUID()
 
 		a := NewSimpleAllocator()
 		deviceCh, done, err := a.GetNodesFromDeviceSource(dsrc, brickId)
@@ -499,7 +501,7 @@ func (bp *StandardBrickPlacer) Replace(
 		DeviceSets: []*DeviceSet{NewDeviceSet(bs.SetSize)},
 	}
 
-	brickId := idgen.GenUUID()
+	brickId := utils.GenUUID()
 	a := NewSimpleAllocator()
 	deviceCh, done, err := a.GetNodesFromDeviceSource(dsrc, brickId)
 	defer close(done)

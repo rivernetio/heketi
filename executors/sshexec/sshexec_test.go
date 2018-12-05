@@ -14,37 +14,36 @@ import (
 	"testing"
 
 	"github.com/heketi/heketi/executors/cmdexec"
-	"github.com/heketi/heketi/pkg/logging"
-	rex "github.com/heketi/heketi/pkg/remoteexec"
+	"github.com/heketi/heketi/pkg/utils"
 	"github.com/heketi/tests"
 )
 
 // Mock SSH calls
 type FakeSsh struct {
-	FakeExecCommands func(host string,
+	FakeConnectAndExec func(host string,
 		commands []string,
 		timeoutMinutes int,
-		useSudo bool) (rex.Results, error)
+		useSudo bool) ([]string, error)
 }
 
 func NewFakeSsh() *FakeSsh {
 	f := &FakeSsh{}
 
-	f.FakeExecCommands = func(host string,
+	f.FakeConnectAndExec = func(host string,
 		commands []string,
 		timeoutMinutes int,
-		useSudo bool) (rex.Results, error) {
-		return rex.Results{}, nil
+		useSudo bool) ([]string, error) {
+		return []string{""}, nil
 	}
 
 	return f
 }
 
-func (f *FakeSsh) ExecCommands(host string,
+func (f *FakeSsh) ConnectAndExec(host string,
 	commands []string,
 	timeoutMinutes int,
-	useSudo bool) (rex.Results, error) {
-	return f.FakeExecCommands(host, commands, timeoutMinutes, useSudo)
+	useSudo bool) ([]string, error) {
+	return f.FakeConnectAndExec(host, commands, timeoutMinutes, useSudo)
 
 }
 
@@ -52,7 +51,7 @@ func TestNewSshExec(t *testing.T) {
 
 	f := NewFakeSsh()
 	defer tests.Patch(&sshNew,
-		func(logger *logging.Logger, user string, file string) (Ssher, error) {
+		func(logger *utils.Logger, user string, file string) (Ssher, error) {
 			return f, nil
 		}).Restore()
 
@@ -79,7 +78,7 @@ func TestSshExecRebalanceOnExpansion(t *testing.T) {
 
 	f := NewFakeSsh()
 	defer tests.Patch(&sshNew,
-		func(logger *logging.Logger, user string, file string) (Ssher, error) {
+		func(logger *utils.Logger, user string, file string) (Ssher, error) {
 			return f, nil
 		}).Restore()
 
@@ -127,7 +126,7 @@ func TestSshExecRebalanceOnExpansion(t *testing.T) {
 func TestNewSshExecDefaults(t *testing.T) {
 	f := NewFakeSsh()
 	defer tests.Patch(&sshNew,
-		func(logger *logging.Logger, user string, file string) (Ssher, error) {
+		func(logger *utils.Logger, user string, file string) (Ssher, error) {
 			return f, nil
 		}).Restore()
 
@@ -158,7 +157,7 @@ func TestSshExecutorEnvVariables(t *testing.T) {
 
 	f := NewFakeSsh()
 	defer tests.Patch(&sshNew,
-		func(logger *logging.Logger, user string, file string) (Ssher, error) {
+		func(logger *utils.Logger, user string, file string) (Ssher, error) {
 			return f, nil
 		}).Restore()
 

@@ -14,10 +14,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lpabon/godbc"
-
 	"github.com/heketi/heketi/executors"
-	rex "github.com/heketi/heketi/pkg/remoteexec"
+	"github.com/lpabon/godbc"
 )
 
 func (s *CmdExecutor) BlockVolumeCreate(host string,
@@ -51,14 +49,14 @@ func (s *CmdExecutor) BlockVolumeCreate(host string,
 	commands := []string{cmd}
 
 	// Execute command
-	results, err := s.RemoteExecutor.ExecCommands(host, commands, 10)
-	if err := rex.AnyError(results, err); err != nil {
+	output, err := s.RemoteExecutor.RemoteCommandExecute(host, commands, 10)
+	if err != nil {
 		s.BlockVolumeDestroy(host, volume.GlusterVolumeName, volume.Name)
 		return nil, err
 	}
 
 	var blockVolumeCreate CliOutput
-	err = json.Unmarshal([]byte(results[0].Output), &blockVolumeCreate)
+	err = json.Unmarshal([]byte(output[0]), &blockVolumeCreate)
 	if err != nil {
 		return nil, fmt.Errorf("Unable to get the block volume create info for block volume %v", volume.Name)
 	}
@@ -90,23 +88,7 @@ func (s *CmdExecutor) BlockVolumeDestroy(host string, blockHostingVolumeName str
 	godbc.Require(blockVolumeName != "")
 
 	commands := []string{
-		fmt.Sprintf("gluster-block delete %v/%v --json",
-			blockHostingVolumeName, blockVolumeName),
-	}
-	res, err := s.RemoteExecutor.ExecCommands(host, commands, 10)
-	if err != nil {
-		// non-command error conditions
-		return err
-	}
-
-	r := res[0]
-	errOutput := r.ErrOutput
-	if errOutput == "" {
-		errOutput = r.Output
-	}
-	if errOutput == "" {
-		// we ought to have some output but we don't
-		return r.Err
+		fmt.Sprintf("gluster-block delete %v/%v --json", blockHostingVolumeName, blockVolumeName),
 	}
 
 	type CliOutput struct {
@@ -115,23 +97,23 @@ func (s *CmdExecutor) BlockVolumeDestroy(host string, blockHostingVolumeName str
 		ErrCode      int    `json:"errCode"`
 		ErrMsg       string `json:"errMsg"`
 	}
+	output, err := s.RemoteExecutor.RemoteCommandExecute(host, commands, 10)
+	if err != nil {
+		logger.LogError("Unable to delete volume %v: %v", blockVolumeName, err)
+		return err
+	}
+
 	var blockVolumeDelete CliOutput
-	if e := json.Unmarshal([]byte(errOutput), &blockVolumeDelete); e != nil {
-		parseErr := logger.LogError(
-			"Unable to parse output from block volume delete: %v",
-			blockVolumeName)
-		if r.Err == nil {
-			return parseErr
-		} else {
-			return r.Err
-		}
+	err = json.Unmarshal([]byte(output[0]), &blockVolumeDelete)
+	if err != nil {
+		err := logger.LogError("Unable to get the block volume delete info for block volume %v", blockVolumeName)
+		return err
 	}
+
 	if blockVolumeDelete.Result == "FAIL" {
-		if strings.Contains(blockVolumeDelete.ErrMsg, "doesn't exist") &&
-			strings.Contains(blockVolumeDelete.ErrMsg, blockVolumeName) {
-			return &executors.VolumeDoesNotExistErr{Name: blockVolumeName}
-		}
-		return logger.LogError("%v", blockVolumeDelete.ErrMsg)
+		err := logger.LogError("%v", blockVolumeDelete.ErrMsg)
+		return err
 	}
-	return r.Err
+
+	return nil
 }

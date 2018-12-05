@@ -19,8 +19,7 @@ import (
 	"github.com/heketi/heketi/executors"
 	wdb "github.com/heketi/heketi/pkg/db"
 	"github.com/heketi/heketi/pkg/glusterfs/api"
-	"github.com/heketi/heketi/pkg/idgen"
-	"github.com/heketi/heketi/pkg/sortedstrings"
+	"github.com/heketi/heketi/pkg/utils"
 	"github.com/lpabon/godbc"
 )
 
@@ -43,7 +42,7 @@ func NewNodeEntryFromRequest(req *api.NodeAddRequest) *NodeEntry {
 	godbc.Require(req != nil)
 
 	node := NewNodeEntry()
-	node.Info.Id = idgen.GenUUID()
+	node.Info.Id = utils.GenUUID()
 	node.Info.ClusterId = req.ClusterId
 	node.Info.Hostnames = req.Hostnames
 	node.Info.Zone = req.Zone
@@ -436,14 +435,14 @@ func (n *NodeEntry) Unmarshal(buffer []byte) error {
 }
 
 func (n *NodeEntry) DeviceAdd(id string) {
-	godbc.Require(!sortedstrings.Has(n.Devices, id))
+	godbc.Require(!utils.SortedStringHas(n.Devices, id))
 
 	n.Devices = append(n.Devices, id)
 	n.Devices.Sort()
 }
 
 func (n *NodeEntry) DeviceDelete(id string) {
-	n.Devices = sortedstrings.Delete(n.Devices, id)
+	n.Devices = utils.SortedStringsDelete(n.Devices, id)
 }
 
 func NodeEntryUpgrade(tx *bolt.Tx) error {

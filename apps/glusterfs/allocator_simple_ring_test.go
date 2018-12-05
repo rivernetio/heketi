@@ -10,7 +10,7 @@
 package glusterfs
 
 import (
-	"github.com/heketi/heketi/pkg/idgen"
+	"github.com/heketi/heketi/pkg/utils"
 	"github.com/heketi/tests"
 	"reflect"
 	"testing"
@@ -148,11 +148,11 @@ func TestSimpleAllocatorRingRebalance(t *testing.T) {
 
 		// Generate nodes for this zone
 		for n := 0; n < nodes; n++ {
-			nid := idgen.GenUUID()
+			nid := utils.GenUUID()
 
 			// Generate drives for this node
 			for d := 0; d < drives; d++ {
-				did := idgen.GenUUID()
+				did := utils.GenUUID()
 
 				// Setup simple device
 				dev := &SimpleDevice{
@@ -193,11 +193,11 @@ func TestSimpleAllocatorGetDeviceList(t *testing.T) {
 
 		// Generate nodes for this zone
 		for n := 0; n < nodes; n++ {
-			nid := idgen.GenUUID()
+			nid := utils.GenUUID()
 
 			// Generate drives for this node
 			for d := 0; d < drives; d++ {
-				did := idgen.GenUUID()
+				did := utils.GenUUID()
 
 				// Setup simple device
 				dev := &SimpleDevice{

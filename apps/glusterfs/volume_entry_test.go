@@ -22,7 +22,6 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/heketi/heketi/executors"
 	"github.com/heketi/heketi/pkg/glusterfs/api"
-	"github.com/heketi/heketi/pkg/sortedstrings"
 	"github.com/heketi/heketi/pkg/utils"
 	"github.com/heketi/tests"
 )
@@ -313,21 +312,21 @@ func TestVolumeEntryAddDeleteDevices(t *testing.T) {
 	tests.Assert(t, len(v.Bricks) == 0)
 
 	v.BrickAdd("123")
-	tests.Assert(t, sortedstrings.Has(v.Bricks, "123"))
+	tests.Assert(t, utils.SortedStringHas(v.Bricks, "123"))
 	tests.Assert(t, len(v.Bricks) == 1)
 	v.BrickAdd("abc")
-	tests.Assert(t, sortedstrings.Has(v.Bricks, "123"))
-	tests.Assert(t, sortedstrings.Has(v.Bricks, "abc"))
+	tests.Assert(t, utils.SortedStringHas(v.Bricks, "123"))
+	tests.Assert(t, utils.SortedStringHas(v.Bricks, "abc"))
 	tests.Assert(t, len(v.Bricks) == 2)
 
 	v.BrickDelete("123")
-	tests.Assert(t, !sortedstrings.Has(v.Bricks, "123"))
-	tests.Assert(t, sortedstrings.Has(v.Bricks, "abc"))
+	tests.Assert(t, !utils.SortedStringHas(v.Bricks, "123"))
+	tests.Assert(t, utils.SortedStringHas(v.Bricks, "abc"))
 	tests.Assert(t, len(v.Bricks) == 1)
 
 	v.BrickDelete("ccc")
-	tests.Assert(t, !sortedstrings.Has(v.Bricks, "123"))
-	tests.Assert(t, sortedstrings.Has(v.Bricks, "abc"))
+	tests.Assert(t, !utils.SortedStringHas(v.Bricks, "123"))
+	tests.Assert(t, utils.SortedStringHas(v.Bricks, "abc"))
 	tests.Assert(t, len(v.Bricks) == 1)
 }
 
@@ -679,7 +678,7 @@ func TestVolumeEntryCreateTwoBricks(t *testing.T) {
 
 	// Check mount information
 	host := strings.Split(info.Mount.GlusterFS.MountPoint, ":")[0]
-	tests.Assert(t, sortedstrings.Has(nodelist, host), host, nodelist)
+	tests.Assert(t, utils.SortedStringHas(nodelist, host), host, nodelist)
 	volfileServers := strings.Split(info.Mount.GlusterFS.Options["backup-volfile-servers"], ",")
 	for index, node := range volfileServers {
 		tests.Assert(t, node != host, index, node, host)
@@ -787,7 +786,7 @@ func TestVolumeEntryCreateBrickDivision(t *testing.T) {
 
 	// Check mount information
 	host := strings.Split(info.Mount.GlusterFS.MountPoint, ":")[0]
-	tests.Assert(t, sortedstrings.Has(nodelist, host), host, nodelist)
+	tests.Assert(t, utils.SortedStringHas(nodelist, host), host, nodelist)
 	volfileServers := strings.Split(info.Mount.GlusterFS.Options["backup-volfile-servers"], ",")
 	for index, node := range volfileServers {
 		tests.Assert(t, node != host, index, node, host)
@@ -923,7 +922,7 @@ func TestVolumeEntryCreateOnClustersRequested(t *testing.T) {
 
 	})
 	tests.Assert(t, err == nil)
-	tests.Assert(t, sortedstrings.Has(clusterset, info.Cluster))
+	tests.Assert(t, utils.SortedStringHas(clusterset, info.Cluster))
 
 }
 
@@ -1689,7 +1688,7 @@ func TestNewVolumeEntryWithVolumeOptions(t *testing.T) {
 	tests.Assert(t, v.Info.Size == 1024)
 	tests.Assert(t, len(v.Info.Id) != 0)
 	tests.Assert(t, len(v.Bricks) == 0)
-	tests.Assert(t, strings.Contains(strings.Join(v.GlusterVolumeOptions, ","), "test-option"))
+	tests.Assert(t, v.GlusterVolumeOptions[0] == "test-option")
 
 	err = v.Create(app.db, app.executor)
 	logger.Info("%v", v.Info.Cluster)
@@ -1703,7 +1702,7 @@ func TestNewVolumeEntryWithVolumeOptions(t *testing.T) {
 				Get([]byte(v.Info.Id)))
 	})
 	tests.Assert(t, err == nil)
-	tests.Assert(t, strings.Contains(strings.Join(entry.GlusterVolumeOptions, ","), "test-option"))
+	tests.Assert(t, entry.GlusterVolumeOptions[0] == "test-option")
 
 }
 func TestNewVolumeEntryWithTSPForMountHosts(t *testing.T) {
@@ -2530,228 +2529,4 @@ func TestVolumeCreateMultiClusterErrorsDevices(t *testing.T) {
 			"expected strings.Contains(etext, cid), got:",
 			etext)
 	}
-}
-
-func TestVolumeCreateRollbackSpaceReclaimed(t *testing.T) {
-	tmpfile := tests.Tempfile()
-	defer os.Remove(tmpfile)
-
-	// Create the app
-	app := NewTestApp(tmpfile)
-	defer app.Close()
-
-	mockerror := errors.New("MOCK")
-	app.xo.MockVolumeCreate = func(host string, volume *executors.VolumeRequest) (*executors.Volume, error) {
-		return nil, mockerror
-	}
-
-	err := setupSampleDbWithTopology(app,
-		2,    // clusters
-		3,    // nodes_per_cluster
-		4,    // devices_per_node,
-		6*TB, // disksize)
-	)
-	tests.Assert(t, err == nil, "expected err == nil, got", err)
-
-	err = app.db.View(func(tx *bolt.Tx) error {
-		devices, e := DeviceList(tx)
-		if e != nil {
-			return e
-		}
-
-		for _, id := range devices {
-			device, e := NewDeviceEntryFromId(tx, id)
-			if e != nil {
-				return e
-			}
-			tests.Assert(t, device.Info.Storage.Free == 6*TB, id, device)
-		}
-		return nil
-	})
-	tests.Assert(t, err == nil, "expected err == nil, got", err)
-
-	req := &api.VolumeCreateRequest{}
-	req.Size = 1024
-	req.Durability.Type = api.DurabilityReplicate
-	req.Durability.Replicate.Replica = 3
-
-	vol := NewVolumeEntryFromRequest(req)
-	vc := NewVolumeCreateOperation(vol, app.db)
-
-	e := vc.Build()
-	tests.Assert(t, e == nil, "expected e == nil, got", e)
-
-	e = vc.Exec(app.executor)
-	tests.Assert(t, e != nil, "expected e != nil, got", e)
-
-	e = vc.Rollback(app.executor)
-	tests.Assert(t, e == nil, "expected e == nil, got", e)
-
-	err = app.db.View(func(tx *bolt.Tx) error {
-		pol, e := PendingOperationList(tx)
-		tests.Assert(t, e == nil, "expected e == nil, got", e)
-		tests.Assert(t, len(pol) == 0, "expected len(pol) == 0, got", len(pol))
-
-		devices, e := DeviceList(tx)
-		if e != nil {
-			return e
-		}
-
-		for _, id := range devices {
-			device, e := NewDeviceEntryFromId(tx, id)
-			if e != nil {
-				return e
-			}
-			tests.Assert(t, device.Info.Storage.Free == 6*TB, id, device)
-		}
-		return nil
-	})
-	tests.Assert(t, err == nil, "expected err == nil, got", err)
-}
-
-func TestBlockVolumeCreateRollbackSpaceReclaimed(t *testing.T) {
-	tmpfile := tests.Tempfile()
-	defer os.Remove(tmpfile)
-
-	// Create the app
-	app := NewTestApp(tmpfile)
-	defer app.Close()
-
-	mockerror := errors.New("MOCK")
-	app.xo.MockBlockVolumeCreate = func(host string, blockVolume *executors.BlockVolumeRequest) (*executors.BlockVolumeInfo, error) {
-		return nil, mockerror
-	}
-
-	err := setupSampleDbWithTopology(app,
-		2,    // clusters
-		3,    // nodes_per_cluster
-		4,    // devices_per_node,
-		6*TB, // disksize)
-	)
-	tests.Assert(t, err == nil, "expected err == nil, got", err)
-
-	err = app.db.View(func(tx *bolt.Tx) error {
-		devices, e := DeviceList(tx)
-		if e != nil {
-			return e
-		}
-
-		for _, id := range devices {
-			device, e := NewDeviceEntryFromId(tx, id)
-			if e != nil {
-				return e
-			}
-			tests.Assert(t, device.Info.Storage.Free == 6*TB, id, device)
-		}
-		return nil
-	})
-	tests.Assert(t, err == nil, "expected err == nil, got", err)
-	bv := createSampleBlockVolumeEntry(500)
-	bv.Info.Name = "myvol"
-	bc := NewBlockVolumeCreateOperation(bv, app.db)
-
-	e := bc.Build()
-	tests.Assert(t, e == nil, "expected e == nil, got", e)
-
-	e = bc.Exec(app.executor)
-	tests.Assert(t, e != nil, "expected e != nil, got", e)
-
-	e = bc.Rollback(app.executor)
-	tests.Assert(t, e == nil, "expected e == nil, got", e)
-
-	err = app.db.View(func(tx *bolt.Tx) error {
-		pol, e := PendingOperationList(tx)
-		tests.Assert(t, e == nil, "expected e == nil, got", e)
-		tests.Assert(t, len(pol) == 0, "expected len(pol) == 0, got", len(pol))
-
-		devices, e := DeviceList(tx)
-		if e != nil {
-			return e
-		}
-
-		for _, id := range devices {
-			device, e := NewDeviceEntryFromId(tx, id)
-			if e != nil {
-				return e
-			}
-			tests.Assert(t, device.Info.Storage.Free == 6*TB, id, device)
-		}
-		return nil
-	})
-	tests.Assert(t, err == nil, "expected err == nil, got", err)
-}
-
-func TestVolumeEntryBlockCapacityLimits(t *testing.T) {
-	var (
-		err   error
-		v     *VolumeEntry
-		mkVol = func() *VolumeEntry {
-			v := NewVolumeEntry()
-			v.Info.Name = "Foo"
-			v.Info.Size = 100
-			v.Info.Block = true
-			return v
-		}
-	)
-
-	t.Run("AddCapacityOver", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		err = v.AddRawCapacity(5)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
-	t.Run("AddCapacity", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(95)
-		err = v.AddRawCapacity(5)
-		tests.Assert(t, err == nil, "expected err == nil, got", err)
-	})
-	t.Run("SetCapacityOver", func(t *testing.T) {
-		v = mkVol()
-		err = v.SetRawCapacity(101)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
-	t.Run("TakeFreeSpace", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		err = v.ModifyFreeSize(-10)
-		tests.Assert(t, err == nil, "expected err == nil, got", err)
-	})
-	t.Run("ReturnFreeSpace", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(95)
-		err = v.ModifyFreeSize(1)
-		tests.Assert(t, err == nil, "expected err == nil, got", err)
-	})
-	t.Run("TakeTooMuchFreeSpace", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		err = v.ModifyFreeSize(-1000)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
-	t.Run("ReturnTooMuchFreeSpace", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		err = v.ModifyFreeSize(1)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
-	t.Run("TakeFreeSpaceInvalidSize", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		v.Info.Size = 50
-		err = v.ModifyFreeSize(-1)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
-	t.Run("TakeTooMuchReservedSpace", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		err = v.ModifyReservedSize(-200)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
-	t.Run("ReturnTooMuchReservedSpace", func(t *testing.T) {
-		v = mkVol()
-		v.SetRawCapacity(100)
-		err = v.ModifyReservedSize(2)
-		tests.Assert(t, err != nil, "expected err != nil, got", err)
-	})
 }

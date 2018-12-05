@@ -142,12 +142,9 @@ for testDir in "${TESTS[@]}" ; do
 
 		# Run the command with a large timeout.
 		# Just large enough so that it doesn't run forever.
-		timeout 3h run.sh
+		timeout 1h run.sh
 		result=$?
 
-		if [ $result -eq 124 ] ; then
-			println "Test timed out: $testDir"
-		fi
 		if [ $result -ne 0 ] ; then
 			println "FAILED $testDir"
 			println "TEARDOWN $testDir"

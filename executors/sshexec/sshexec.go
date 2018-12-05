@@ -15,16 +15,14 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/lpabon/godbc"
-
 	"github.com/heketi/heketi/executors/cmdexec"
-	"github.com/heketi/heketi/pkg/logging"
-	rex "github.com/heketi/heketi/pkg/remoteexec"
-	"github.com/heketi/heketi/pkg/remoteexec/ssh"
+	"github.com/heketi/heketi/pkg/utils"
+	"github.com/heketi/heketi/pkg/utils/ssh"
+	"github.com/lpabon/godbc"
 )
 
 type Ssher interface {
-	ExecCommands(host string, commands []string, timeoutMinutes int, useSudo bool) (rex.Results, error)
+	ConnectAndExec(host string, commands []string, timeoutMinutes int, useSudo bool) ([]string, error)
 }
 
 type SshExecutor struct {
@@ -40,7 +38,7 @@ type SshExecutor struct {
 
 var (
 	ErrSshPrivateKey = errors.New("Unable to read private key file")
-	sshNew           = func(logger *logging.Logger, user string, file string) (Ssher, error) {
+	sshNew           = func(logger *utils.Logger, user string, file string) (Ssher, error) {
 		s := ssh.NewSshExecWithKeyFile(logger, user, file)
 		if s == nil {
 			return nil, ErrSshPrivateKey
@@ -87,8 +85,8 @@ func NewSshExecutor(config *SshConfig) (*SshExecutor, error) {
 	setWithEnvVariables(config)
 
 	s := &SshExecutor{}
-	s.CmdExecutor.Init(&config.CmdConfig)
 	s.RemoteExecutor = s
+	s.Throttlemap = make(map[string]chan bool)
 
 	// Set configuration
 	if config.PrivateKeyFile == "" {
@@ -137,15 +135,16 @@ func NewSshExecutor(config *SshConfig) (*SshExecutor, error) {
 	return s, nil
 }
 
-func (s *SshExecutor) ExecCommands(
-	host string, commands []string, timeoutMinutes int) (rex.Results, error) {
+func (s *SshExecutor) RemoteCommandExecute(host string,
+	commands []string,
+	timeoutMinutes int) ([]string, error) {
 
 	// Throttle
 	s.AccessConnection(host)
 	defer s.FreeConnection(host)
 
 	// Execute
-	return s.exec.ExecCommands(host+":"+s.port, commands, timeoutMinutes, s.config.Sudo)
+	return s.exec.ConnectAndExec(host+":"+s.port, commands, timeoutMinutes, s.config.Sudo)
 }
 
 func (s *SshExecutor) RebalanceOnExpansion() bool {

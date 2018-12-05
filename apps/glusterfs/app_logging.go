@@ -15,23 +15,22 @@ import (
 	"net/http"
 
 	"github.com/heketi/heketi/pkg/glusterfs/api"
-	"github.com/heketi/heketi/pkg/logging"
 	"github.com/heketi/heketi/pkg/utils"
 )
 
 func (a *App) logLevelName() string {
 	switch logger.Level() {
-	case logging.LEVEL_NOLOG:
+	case utils.LEVEL_NOLOG:
 		return "none"
-	case logging.LEVEL_CRITICAL:
+	case utils.LEVEL_CRITICAL:
 		return "critical"
-	case logging.LEVEL_ERROR:
+	case utils.LEVEL_ERROR:
 		return "error"
-	case logging.LEVEL_WARNING:
+	case utils.LEVEL_WARNING:
 		return "warning"
-	case logging.LEVEL_INFO:
+	case utils.LEVEL_INFO:
 		return "info"
-	case logging.LEVEL_DEBUG:
+	case utils.LEVEL_DEBUG:
 		return "debug"
 	default:
 		return "(unknown)"

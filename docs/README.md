@@ -9,7 +9,7 @@ volumes.
 ## Topics
 
 * [Heketi API](./api/api.md)
-* [Administration](./admin/readme.md)
+* [Adminstration](./admin/readme.md)
 * [Troubleshooting Guide](./troubleshooting.md)
 * [Contributing to Heketi](./contributing.md)
 

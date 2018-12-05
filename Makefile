@@ -9,24 +9,19 @@ BRANCH := $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 VER := $(shell git describe --match='v[0-9].[0-9].[0-9]')
 TAG := $(shell git tag --points-at HEAD 'v[0-9].[0-9].[0-9]' | tail -n1)
 GO:=go
-GLIDE:=glide
-TESTBIN:=./test.sh
 GOARCH := $(shell $(GO) env GOARCH)
 GOOS := $(shell $(GO) env GOOS)
 GOHOSTARCH := $(shell $(GO) env GOHOSTARCH)
 GOHOSTOS := $(shell $(GO) env GOHOSTOS)
 GOBUILDFLAGS :=
+ifeq ($(GOOS),$(GOHOSTOS))
+ifeq ($(GOARCH),$(GOHOSTARCH))
+	GOBUILDFLAGS :=-i
+endif
+endif
 GLIDEPATH := $(shell command -v glide 2> /dev/null)
 HGPATH := $(shell command -v hg 2> /dev/null)
 DIR=.
-
-# Specify CI=openshift to use a custom HOME dir
-# that prevents unhelpful behavior from glide and tox
-ifeq ($(CI),openshift)
-	HOME := /tmp/heketi_home/
-	GLIDE_HOME := /tmp/heketi_home/.glide
-	GLIDE := HOME=$(HOME) GLIDE_HOME=$(GLIDE_HOME) glide
-endif
 
 ifeq (master,$(BRANCH))
 	VERSION = $(VER)
@@ -82,13 +77,11 @@ ifndef HGPATH
 	$(error mercurial/hg is required to continue)
 endif
 	echo "Installing vendor directory"
-	if [ "$(GLIDE_HOME)" ]; then mkdir -p "$(GLIDE_HOME)"; fi
-	$(GLIDE) install -v
+	glide install -v
 
 glide.lock: glide.yaml
 	echo "Glide.yaml has changed, updating glide.lock"
-	if [ "$(GLIDE_HOME)" ]; then mkdir -p "$(GLIDE_HOME)"; fi
-	$(GLIDE) update -v
+	glide update -v
 
 client: vendor glide.lock
 	@$(MAKE) -C client/cli/go
@@ -97,7 +90,7 @@ run: server
 	./$(APP_NAME)
 
 test: vendor glide.lock
-	$(TESTBIN) $(TESTOPTIONS)
+	./test.sh $(TESTOPTIONS)
 
 test-functional: vendor glide.lock
 	$(MAKE) -C tests/functional test
@@ -156,35 +149,12 @@ linux_arm_dist:
 linux_arm64_dist:
 	GOOS=linux GOARCH=arm64 $(MAKE) dist
 
-# NOTE: You can build the binaries for darwin or any other platform
-# golang supports. Just run: make dist GOOS=myos GOARCH=myarch
+darwin_amd64_dist:
+	GOOS=darwin GOARCH=amd64 $(MAKE) dist
 
-release: deps_tarball linux_arm64_dist linux_arm_dist linux_amd64_dist
-
-DESTDIR:=
-prefix:=/usr/local
-bindir:=$(prefix)/bin
-datarootdir:=$(prefix)/share
-hekdir:=$(datarootdir)/heketi
-mandir:=$(datarootdir)/man
-
-INSTALL:=install -D -p
-INSTALL_PROGRAM:=$(INSTALL) -m 0755
-INSTALL_DATA:=$(INSTALL) -m 0644
-install:
-	$(INSTALL_PROGRAM) client/cli/go/heketi-cli \
-		$(DESTDIR)$(bindir)/heketi-cli
-	$(INSTALL_PROGRAM) heketi \
-		$(DESTDIR)$(bindir)/heketi
-	$(INSTALL_DATA) docs/man/heketi-cli.8 \
-		$(DESTDIR)$(mandir)/man8/heketi-cli.8
-	$(INSTALL_PROGRAM) extras/container/heketi-start.sh \
-		$(DESTDIR)$(hekdir)/container/heketi-start.sh
-	$(INSTALL_DATA) extras/container/heketi.json \
-		$(DESTDIR)$(hekdir)/container/heketi.json
-
+release: deps_tarball darwin_amd64_dist linux_arm64_dist linux_arm_dist linux_amd64_dist
 
 .PHONY: server client test clean name run version release \
-	linux_arm_dist linux_amd64_dist linux_arm64_dist \
+	darwin_amd64_dist linux_arm_dist linux_amd64_dist linux_arm64_dist \
 	heketi clean_vendor deps_tarball all dist \
-	test-functional install
+	test-functional

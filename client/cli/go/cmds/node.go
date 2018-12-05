@@ -284,6 +284,7 @@ var nodeInfoCommand = &cobra.Command{
 			return err
 		}
 
+		// Create cluster
 		info, err := heketi.NodeInfo(nodeId)
 		if err != nil {
 			return err
